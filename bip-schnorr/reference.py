@@ -1,5 +1,6 @@
 import hashlib
 import binascii
+import secrets
 
 p = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 n = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
@@ -88,6 +89,46 @@ def schnorr_verify(msg, pubkey, sig):
         return False
     return True
 
+def schnorr_batch_verify(msgs, pubkeys, sigs):
+    if len(msgs) != len(pubkeys) or len(pubkeys) != len(sigs):
+        raise ValueError('All the parameters must be the same length.')
+    if len(msgs) < 1:
+        raise ValueError('All the parameters must have at least one element.')
+
+    i, ls, rs = 0, 0, None
+    for sig in sigs:
+        msg = msgs[i]
+        pubkey = pubkeys[i]
+        if len(msg) != 32:
+            raise ValueError('The message must be a 32-byte array.')
+        if len(pubkey) != 33:
+            raise ValueError('The public key must be a 33-byte array.')
+        if len(sig) != 64:
+            raise ValueError('The signature must be a 64-byte array.')
+        P = point_from_bytes(pubkey)
+        if (P is None):
+            return False
+        r = int_from_bytes(sig[0:32])
+        s = int_from_bytes(sig[32:64])
+        if (r >= p or s >= n):
+            return False
+        e = int_from_bytes(hash_sha256(sig[0:32] + bytes_from_point(P) + msg)) % n
+        c = (pow(r, 3, p) + 7) % p
+        y = pow(c, (p + 1) // 4, p)
+        if pow(y, 2, p) != c:
+            return False
+        R = (r, y)
+        if i != 0:
+            a = 1 + secrets.randbelow(n-2)
+            s = s * a
+            R = point_mul(R, a)
+            P = point_mul(P, a * e)
+        ls = ls + s
+        rs = point_add(rs, R)
+        rs = point_add(rs, P)
+        i = i + 1
+    return point_mul(G, ls) == rs
+
 #
 # The following code is only used to verify the test vectors.
 #
@@ -99,12 +140,22 @@ def test_vectors():
         reader = csv.reader(csvfile)
         reader.__next__()
         i = 1
+        vmsgs, vpubkeys, vsigs = [], [], []
+        imsgs, ipubkeys, isigs = [], [], []
         for row in reader:
             (seckey, pubkey, msg, sig, result, comment) = row
             pubkey = bytes.fromhex(pubkey)
             msg = bytes.fromhex(msg)
             sig = bytes.fromhex(sig)
             result = result == 'TRUE'
+            if result:
+                vmsgs.append(msg)
+                vpubkeys.append(pubkey)
+                vsigs.append(sig)
+            else:
+                imsgs.append(msg)
+                ipubkeys.append(pubkey)
+                isigs.append(sig)
             print('\nTest vector #%-3i: ' % i)
             if seckey != '':
                 seckey = int(seckey, 16)
@@ -127,6 +178,21 @@ def test_vectors():
                     print('   Comment:', comment)
                 all_passed = False
             i = i + 1
+    batches = []
+    batches.append((vpubkeys, vmsgs, vsigs, True))
+    batches.append((ipubkeys, imsgs, isigs, False))
+    batches.append((ipubkeys + vpubkeys, imsgs + vmsgs, isigs + vsigs, False))
+    for (pubkeys, msgs, sigs, result) in batches:
+        print('\nTest vector #%-3i: ' % i)
+        result_actual = schnorr_batch_verify(msgs, pubkeys, sigs)
+        if result == result_actual:
+            print(' * Passed batch verification test.')
+        else:
+            print(' * Failed batch verification test.')
+            print('   Excepted batch verification result:', result)
+            print('     Actual batch verification result:', result_actual)
+            all_passed = False
+        i = i + 1
     print()
     if all_passed:
         print('All test vectors passed.')
