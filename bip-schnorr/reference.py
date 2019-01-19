@@ -113,21 +113,21 @@ def schnorr_batch_verify(msgs, pubkeys, sigs):
         if (r >= p or s >= n):
             return False
         e = int_from_bytes(hash_sha256(sig[0:32] + bytes_from_point(P) + msg)) % n
-        c = (pow(r, 3, p) + 7) % p
+        c = (pow(r, 3) + 7) % p
         y = pow(c, (p + 1) // 4, p)
         if pow(y, 2, p) != c:
             return False
         R = (r, y)
-        if i != 0:
-            a = 1 + secrets.randbelow(n-2)
-            s = s * a
-            R = point_mul(R, a)
-            P = point_mul(P, a * e)
-        ls = ls + s
+
+        a = 1 + secrets.randbelow(n-2) if i != 0 else 1
+        s = s * a
+        R = point_mul(R, a)
+        P = point_mul(P, a * e)
         rs = point_add(rs, R)
         rs = point_add(rs, P)
+        ls = ls + s
         i = i + 1
-    return point_mul(G, ls) == rs
+    return point_mul(G, ls % n) == rs
 
 #
 # The following code is only used to verify the test vectors.
