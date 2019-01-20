@@ -121,19 +121,15 @@ def schnorr_batch_verify(msgs, pubkeys, sigs):
         if pow(y, 2, p) != c:
             return False
         R = (r, y)
-        if i == 0:
-            eP = point_mul(P, e)
-            rs = point_add(R, eP)
-        else:
-            a = 1 + secrets.randbelow(n-2)
-            aR = point_mul(R, a)
-            
-            # point_mul can only do up to 256bit numbers, so two steps are required for aeP
-            aP = point_mul(P, a)
-            aeP = point_mul(aP, e)
-            rs = point_add(rs, aR)
-            rs = point_add(rs, aeP)
-            s = s * a
+
+        a = 1 + secrets.randbelow(n-2) if i != 0 else 1
+        aR = point_mul(R, a)
+        # point_mul can only do up to 256bit numbers, so two steps are required for aeP
+        aP = point_mul(P, a)
+        aeP = point_mul(aP, e)
+        rs = point_add(rs, aR)
+        rs = point_add(rs, aeP)
+        s = s * a
         ls = ls + s
         i = i + 1
     return point_mul(G, ls % n) == rs
