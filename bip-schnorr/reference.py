@@ -110,8 +110,11 @@ def schnorr_batch_verify(msgs, pubkeys, sigs):
             return False
         r = int_from_bytes(sig[0:32])
         s = int_from_bytes(sig[32:64])
-        if (r >= p or s >= n):
-            return False
+        if (r >= p):
+            raise RuntimeError('Failure, r is larger than or equal to field size.')
+        if (s >= n):
+            raise RuntimeError('Failure, s is larger than or equal to curve order.')
+
         e = int_from_bytes(hash_sha256(sig[0:32] + bytes_from_point(P) + msg)) % n
         c = (pow(r, 3) + 7) % p
         y = pow(c, (p + 1) // 4, p)
@@ -120,11 +123,13 @@ def schnorr_batch_verify(msgs, pubkeys, sigs):
         R = (r, y)
 
         a = 1 + secrets.randbelow(n-2) if i != 0 else 1
+        aR = point_mul(R, a)
+        # point_mul can only do up to 256bit numbers, so two steps are required for aeP
+        aP = point_mul(P, a)
+        aeP = point_mul(aP, e)
+        rs = point_add(rs, aR)
+        rs = point_add(rs, aeP)
         s = s * a
-        R = point_mul(R, a)
-        P = point_mul(P, a * e)
-        rs = point_add(rs, R)
-        rs = point_add(rs, P)
         ls = ls + s
         i = i + 1
     return point_mul(G, ls % n) == rs
@@ -179,11 +184,12 @@ def test_vectors():
                 all_passed = False
             i = i + 1
     batches = []
+    i = 1
     batches.append((vpubkeys, vmsgs, vsigs, True))
     batches.append((ipubkeys, imsgs, isigs, False))
     batches.append((ipubkeys + vpubkeys, imsgs + vmsgs, isigs + vsigs, False))
     for (pubkeys, msgs, sigs, result) in batches:
-        print('\nTest vector #%-3i: ' % i)
+        print('\nTest batch #%-3i: ' % i)
         result_actual = schnorr_batch_verify(msgs, pubkeys, sigs)
         if result == result_actual:
             print(' * Passed batch verification test.')
