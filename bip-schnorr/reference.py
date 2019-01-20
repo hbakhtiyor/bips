@@ -110,10 +110,8 @@ def schnorr_batch_verify(msgs, pubkeys, sigs):
             return False
         r = int_from_bytes(sig[0:32])
         s = int_from_bytes(sig[32:64])
-        if (r >= p):
-            raise RuntimeError('Failure, r is larger than or equal to field size.')
-        if (s >= n):
-            raise RuntimeError('Failure, s is larger than or equal to curve order.')
+        if (r >= p or s >= n):
+            return False
 
         e = int_from_bytes(hash_sha256(sig[0:32] + bytes_from_point(P) + msg)) % n
         c = (pow(r, 3) + 7) % p
@@ -173,6 +171,16 @@ def test_vectors():
                     print('     Actual signature:', sig_actual.hex())
                     all_passed = False
             result_actual = schnorr_verify(msg, pubkey, sig)
+            if result == result_actual:
+                print(' * Passed verification test.')
+            else:
+                print(' * Failed verification test.')
+                print('   Excepted verification result:', result)
+                print('     Actual verification result:', result_actual)
+                if comment:
+                    print('   Comment:', comment)
+                all_passed = False
+            result_actual = schnorr_batch_verify([msg], [pubkey], [sig])
             if result == result_actual:
                 print(' * Passed verification test.')
             else:
